@@ -1,0 +1,84 @@
+#include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <SD.h>
+#include <SPI.h>
+
+const char* ssid = "ESP32-Access-Point"; // Access point name
+const char* password = "123456789"; // Access point password
+
+AsyncWebServer server(80); // Create an asynchronous web server on port 80
+
+void setup() {
+Serial.begin(115200); // Initialize the serial port
+
+// Initialize the access point
+WiFi.softAP(ssid, password);
+Serial.println("Access Point started");
+
+// Get the IP address
+IPAddress myIP = WiFi.softAPIP();
+Serial.print("ESP32 AP IP address: ");
+Serial.println(myIP); // Print IP address to serial port
+
+// Initialize SD card
+if (!SD.begin()) {
+Serial.println("SD card initialization failed!");
+return;
+}
+Serial.println("SD card initialized successfully.");
+
+// Set a handler for the root URL 
+server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){ 
+String html = "<html><body>"; 
+html += "<h1>Upload MP3 File</h1>"; 
+html += "<form action=\"/upload\" method=\"POST\" enctype=\"multipart/form-data\">"; 
+html += "<input type=\"file\" name=\"file\">"; 
+html += "<input type=\"submit\" value=\"Upload\">"; 
+html += "</form>"; 
+html += "</body></html>"; 
+request->send(200, "text/html", html); // Send HTML page 
+}); 
+
+// Set up a handler for file upload
+server.on("/upload", HTTP_POST, [](AsyncWebServerRequest *request){
+// Handle file upload
+}, handleFileUpload);
+
+// Start server
+server.begin();
+Serial.println("HTTP server started");
+}
+
+void loop() {
+// No client handling required since async server is used
+}
+
+void handleFileUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+static File file; // Declare file variable as static so it retains its value between calls
+
+if (!index) {
+Serial.printf("Upload Start: %s\n", filename.c_str());
+
+// Open file for writing to SD card
+file = SD.open("/" + filename, FILE_WRITE);
+if (!file) {
+Serial.println("Failed to open file for writing");
+request->send(500, "text/plain", "Failed to open file for writing");
+return;
+} else {
+Serial.printf("File %s successfully opened for writing.\n", filename.c_str());
+}
+}
+
+// Write data to file
+if (len) {
+file.write(data, len);
+Serial.printf("Written %d bytes to file %s\n", len, filename.c_str());
+}
+
+if (final) {
+file.close();
+Serial.printf("File %s successfully loaded\n", filename.c_str());
+request->send(200, "text/plain", "File uploaded successfully");
+}
+}
